@@ -59,15 +59,41 @@ Create a `.env` file in the project root to configure Beets-specific settings. H
     # Add any other environment-specific settings here
     PORT=
     ```
-5. **Running the Application
+5. **Running the Application**
 
-To start the application, you can run the following command from the project root:
+To start the application, run the following command from the project root:
 
 ```bash
 python app.py
-
 ```
-    Open your browser and navigate to `http://127.0.0.1:3001`.
+
+Open your browser and navigate to `http://127.0.0.1:3001`.
+
+By default Beetiful binds only to loopback (`127.0.0.1`) and runs under [waitress](https://github.com/Pylons/waitress), a production-grade WSGI server, so it won't trip Flask's "development server" warnings.
+
+#### Flags
+
+| Flag | Effect |
+| --- | --- |
+| `--port N` | TCP port to bind. Defaults to the `FLASK_PORT` env var, or `3001`. |
+| `--allow-local-subnet` | Also accept connections from the host's local `/24` subnet (e.g. `192.168.1.0/24` if the host's LAN IP is `192.168.1.50`). Loopback is still allowed; everything else is rejected with HTTP 403. The host/subnet is detected automatically at startup. |
+| `--debug` | Run with Flask's development server (auto-reload + interactive debugger). Off by default. |
+
+Examples:
+
+```bash
+# Localhost only, production server (default)
+python app.py
+
+# Localhost + your LAN, production server
+python app.py --allow-local-subnet
+
+# Localhost only, Flask dev server with debugger
+python app.py --debug
+
+# LAN-accessible dev server on a custom port
+python app.py --allow-local-subnet --debug --port 8080
+```
 
 ## Usage
 
