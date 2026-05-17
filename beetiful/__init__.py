@@ -68,7 +68,11 @@ def run_command():
         return jsonify({'error': str(e)}), 500
 
 LIBRARY_FIELDS = ['title', 'artist', 'album', 'genre', 'year', 'bpm', 'composer', 'comments', 'id', 'path']
-LIBRARY_FORMAT = '@@'.join(f'${f}' for f in LIBRARY_FIELDS)
+# Use ASCII Unit Separator between fields and Record Separator between records so embedded
+# newlines in fields like $comments don't fracture rows.
+FIELD_SEP = '\x1f'
+RECORD_SEP = '\x1e'
+LIBRARY_FORMAT = FIELD_SEP.join(f'${f}' for f in LIBRARY_FIELDS) + RECORD_SEP
 
 
 @app.route('/api/library', methods=['GET'])
@@ -76,14 +80,14 @@ def get_library():
     """Fetch the library items including genre information."""
     result = subprocess.run(['beet', 'list', '-f', LIBRARY_FORMAT], capture_output=True, text=True)
     if result.returncode == 0:
-        items = [parse_library_item(line) for line in result.stdout.splitlines()]
+        items = [parse_library_item(r) for r in result.stdout.split(RECORD_SEP) if r.strip()]
         return jsonify({'items': items})
     else:
         return jsonify({'error': result.stderr}), 500
 
-def parse_library_item(line):
-    """Parse a library item from the list output."""
-    fields = line.split('@@')
+def parse_library_item(record):
+    """Parse one record from the list output."""
+    fields = record.lstrip('\n').split(FIELD_SEP)
     return {name: (fields[i] if i < len(fields) else '') for i, name in enumerate(LIBRARY_FIELDS)}
 
 
