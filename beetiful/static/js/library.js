@@ -236,11 +236,15 @@ function populateLibrary(items) {
 
     items.forEach(item => {
         const row = document.createElement('tr');
-        for (const field of ['title', 'artist', 'album', 'genre']) {
-            const td = document.createElement('td');
-            td.textContent = item[field] || '';
-            row.appendChild(td);
-        }
+
+        const actionTd = document.createElement('td');
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-primary btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => editTrack(item));
+        actionTd.appendChild(editBtn);
+        row.appendChild(actionTd);
+
         const playTd = document.createElement('td');
         if (item.id) {
             const audio = document.createElement('audio');
@@ -251,13 +255,12 @@ function populateLibrary(items) {
         }
         row.appendChild(playTd);
 
-        const actionTd = document.createElement('td');
-        const editBtn = document.createElement('button');
-        editBtn.className = 'btn btn-primary btn-sm';
-        editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => editTrack(item));
-        actionTd.appendChild(editBtn);
-        row.appendChild(actionTd);
+        for (const field of ['title', 'artist', 'album', 'genre']) {
+            const td = document.createElement('td');
+            td.textContent = item[field] || '';
+            row.appendChild(td);
+        }
+
         libraryResults.appendChild(row);
     });
 }
@@ -265,11 +268,6 @@ function populateLibrary(items) {
 function editTrack(track) {
     const editFormContainer = document.getElementById('editFormContainer');
     editFormContainer.innerHTML = '';
-    editFormContainer.style.display = '';
-
-    const heading = document.createElement('h5');
-    heading.textContent = 'Edit Track';
-    editFormContainer.appendChild(heading);
 
     const fields = [
         { id: 'editTitle', label: 'Title', key: 'title', tag: 'input' },
@@ -297,10 +295,9 @@ function editTrack(track) {
     }
 
     const buttons = [
-        { label: 'Remove', cls: 'btn btn-warning mt-2', onClick: () => confirmAction('remove', track.title, track.artist, track.album) },
+        { label: 'Save', cls: 'btn btn-success mt-2 me-2', onClick: () => saveTrack(track.title, track.artist, track.album) },
+        { label: 'Remove', cls: 'btn btn-warning mt-2 me-2', onClick: () => confirmAction('remove', track.title, track.artist, track.album) },
         { label: 'Delete', cls: 'btn btn-danger mt-2', onClick: () => confirmAction('delete', track.title, track.artist, track.album) },
-        { label: 'Save', cls: 'btn btn-success mt-2', onClick: () => saveTrack(track.title, track.artist, track.album) },
-        { label: 'Cancel', cls: 'btn btn-secondary mt-2', onClick: closeEditForm },
     ];
     for (const b of buttons) {
         const btn = document.createElement('button');
@@ -309,6 +306,8 @@ function editTrack(track) {
         btn.addEventListener('click', b.onClick);
         editFormContainer.appendChild(btn);
     }
+
+    bootstrap.Offcanvas.getOrCreateInstance(document.getElementById('editOffcanvas')).show();
 }
 
 function saveTrack(originalTitle, originalArtist, originalAlbum) {
@@ -328,11 +327,11 @@ function saveTrack(originalTitle, originalArtist, originalAlbum) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ originalTitle, originalArtist, originalAlbum, updatedTrack })
     })
-    .then(response => response.json())
-    .then(data => {
-        alert(data.message || 'Track updated successfully.');
-        fetchLibrary();  
-        closeEditForm();
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.error || 'Update failed');
+        showToast(data.message || 'Track updated successfully.');
+        fetchLibrary();
     })
     .catch(error => {
         alert('Error updating track: ' + error.message);
@@ -341,64 +340,63 @@ function saveTrack(originalTitle, originalArtist, originalAlbum) {
 
 function removeTrack(title, artist, album) {
     if (!confirm('Are you sure you want to remove this track from the library?')) return;
-
-    fetch('/api/library/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, artist, album })
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('Remove response:', data);
-        if (data.message) {
-            alert(data.message || 'Track removed successfully.');
-        } else {
-            alert('Failed to remove track: ' + (data.error || 'Unknown error.'));
-        }
-        fetchLibrary();  
-        closeEditForm();
-    })
-    .catch(error => {
-        console.error('Error removing track:', error);
-        alert('Error removing track: ' + error.message);
-    });
+    runDestructive('/api/library/remove', { title, artist, album }, 'remove');
 }
 
 function deleteTrack(title, artist, album) {
     if (!confirm('Are you sure you want to delete this track? This action cannot be undone.')) return;
+    runDestructive('/api/library/delete', { title, artist, album }, 'delete');
+}
 
-    fetch('/api/library/delete', {
+function runDestructive(endpoint, body, verb) {
+    fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, artist, album })
+        body: JSON.stringify(body)
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Delete response:', data);
-        if (data.message) {
-            alert(data.message || 'Track deleted successfully.');
-        } else {
-            alert('Failed to delete track: ' + (data.error || 'Unknown error.'));
-        }
-        fetchLibrary();  
-        closeEditForm(); 
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.error || `${verb} failed`);
+        showToast(data.message || `Track ${verb}d successfully.`);
+        fetchLibrary();
+        closeEditForm();
     })
     .catch(error => {
-        console.error('Error deleting track:', error);
-        alert('Error deleting track: ' + error.message);
+        alert(`Error ${verb}ing track: ${error.message}`);
     });
 }
 
 
 function closeEditForm() {
-    const editFormContainer = document.getElementById('editFormContainer');
-    editFormContainer.innerHTML = '';  
-    editFormContainer.style.display = 'none';  
+    const el = document.getElementById('editOffcanvas');
+    if (el) bootstrap.Offcanvas.getOrCreateInstance(el).hide();
+}
+
+function showToast(message) {
+    const container = document.getElementById('toastContainer');
+    if (!container) { console.log(message); return; }
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast align-items-center text-bg-success border-0';
+    toastEl.setAttribute('role', 'status');
+    toastEl.setAttribute('aria-live', 'polite');
+    toastEl.setAttribute('aria-atomic', 'true');
+    const flex = document.createElement('div');
+    flex.className = 'd-flex';
+    const body = document.createElement('div');
+    body.className = 'toast-body';
+    body.textContent = message;
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close btn-close-white me-2 m-auto';
+    close.setAttribute('data-bs-dismiss', 'toast');
+    close.setAttribute('aria-label', 'Close');
+    flex.appendChild(body);
+    flex.appendChild(close);
+    toastEl.appendChild(flex);
+    container.appendChild(toastEl);
+    const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
+    toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+    toast.show();
 }
 
 
@@ -449,25 +447,22 @@ function confirmAction(action, title, artist, album) {
 
 function executeAction(action, title, artist, album) {
     const endpoint = action === 'delete' ? '/api/library/delete' : '/api/library/remove';
+    const modalEl = document.getElementById('confirmationModal');
+    if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+
     fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, artist, album })
     })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(data => {
-        alert(data.message || `Track ${action}d successfully.`);
-        fetchLibrary();  
+    .then(response => response.json().then(data => ({ ok: response.ok, data })))
+    .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.error || `${action} failed`);
+        showToast(data.message || `Track ${action}d successfully.`);
+        fetchLibrary();
         closeEditForm();
-        document.getElementById('confirmationModal').remove();
     })
     .catch(error => {
         alert(`Error ${action}ing track: ${error.message}`);
-        document.getElementById('confirmationModal').remove();
     });
 }

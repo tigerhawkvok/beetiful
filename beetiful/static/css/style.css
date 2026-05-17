@@ -17,18 +17,17 @@ body {
     padding: 0;
 }
 
-.sidebar-container, .form-container {
+.offcanvas {
     background-color: var(--sidebar-bg);
-    padding: 20px;
-    height: 100vh;
-    overflow-y: auto;
-    border: 1px solid #444;
+    color: #cfcfcf;
 }
 
-.container-fluid {
-    height: 100vh;
-    display: flex;
-    flex-direction: row;
+.offcanvas-end {
+    width: 420px;
+}
+
+#editFormContainer textarea {
+    min-height: 4rem;
 }
 
 .table-container {
@@ -151,14 +150,8 @@ input[type="text"]:not(:placeholder-shown) {
 }
 
 @media (max-width: 768px) {
-    .container-fluid {
-        flex-direction: column;
-    }
-
-    .sidebar-container, .main-content, .form-container {
+    .offcanvas-end {
         width: 100%;
-        padding: 10px;
-        border: none;
     }
 }
 
