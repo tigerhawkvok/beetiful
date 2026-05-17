@@ -32,6 +32,68 @@ body {
     z-index: 10;
 }
 
+.code-editor-wrapper {
+    position: relative;
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    background: #282c34;
+}
+
+.code-editor-wrapper > pre,
+.code-editor-wrapper > textarea {
+    margin: 0;
+    padding: 8px;
+    border: 0;
+    width: 100%;
+    height: 16em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    tab-size: 2;
+    white-space: pre;
+    overflow: auto;
+    box-sizing: border-box;
+}
+
+.code-editor-wrapper > pre {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: transparent;
+}
+
+.code-editor-wrapper > pre > code.hljs {
+    padding: 0;
+    background: transparent;
+    display: inline-block;
+    min-width: 100%;
+    min-height: 100%;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.code-editor-wrapper > textarea {
+    position: relative;
+    background: transparent;
+    color: transparent;
+    caret-color: #fff;
+    resize: vertical;
+    z-index: 1;
+    box-shadow: none;
+}
+
+.code-editor-wrapper > textarea:focus {
+    outline: none;
+    background: transparent;
+    box-shadow: none;
+}
+
+.code-editor-wrapper > textarea::selection {
+    background: rgba(138, 43, 111, 0.4);
+    color: transparent;
+}
+
 .offcanvas-end {
     width: 420px;
 }

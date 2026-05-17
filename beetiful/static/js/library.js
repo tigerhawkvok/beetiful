@@ -377,10 +377,16 @@ function deleteTrack(title, artist, album) {
 }
 
 function runDestructive(endpoint, body, verb) {
+    const busyLabel = verb === 'delete' ? 'Deleting…' : 'Removing…';
+    const overlay = showBusyOverlay(document.getElementById('editOffcanvas'), busyLabel);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
+        body: JSON.stringify(body),
+        signal: controller.signal
     })
     .then(response => response.json().then(data => ({ ok: response.ok, data })))
     .then(({ ok, data }) => {
@@ -390,7 +396,15 @@ function runDestructive(endpoint, body, verb) {
         closeEditForm();
     })
     .catch(error => {
-        alert(`Error ${verb}ing track: ${error.message}`);
+        if (error.name === 'AbortError') {
+            alert(`${verb.charAt(0).toUpperCase() + verb.slice(1)} timed out after 30 seconds. The server may still be processing — refresh to check.`);
+        } else {
+            alert(`Error ${verb}ing track: ${error.message}`);
+        }
+    })
+    .finally(() => {
+        clearTimeout(timeoutId);
+        overlay.remove();
     });
 }
 
@@ -477,20 +491,5 @@ function executeAction(action, title, artist, album) {
     const endpoint = action === 'delete' ? '/api/library/delete' : '/api/library/remove';
     const modalEl = document.getElementById('confirmationModal');
     if (modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
-
-    fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, artist, album })
-    })
-    .then(response => response.json().then(data => ({ ok: response.ok, data })))
-    .then(({ ok, data }) => {
-        if (!ok) throw new Error(data.error || `${action} failed`);
-        showToast(data.message || `Track ${action}d successfully.`);
-        fetchLibrary();
-        closeEditForm();
-    })
-    .catch(error => {
-        alert(`Error ${action}ing track: ${error.message}`);
-    });
+    runDestructive(endpoint, { title, artist, album }, action);
 }
