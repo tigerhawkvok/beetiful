@@ -24,12 +24,12 @@ function fetchLibrary() {
                 showPage(currentPage);
             } else {
                 console.error('Unexpected data format:', data);
-                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">No library data found.</td></tr>';
+                document.getElementById('libraryResults').innerHTML = '<tr><td colspan="6">No library data found.</td></tr>';
             }
         })
         .catch(error => {
             console.error('Error fetching library data:', error);
-            document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">Error loading library data.</td></tr>';
+            document.getElementById('libraryResults').innerHTML = '<tr><td colspan="6">Error loading library data.</td></tr>';
         });
 }
 
@@ -241,6 +241,16 @@ function populateLibrary(items) {
             td.textContent = item[field] || '';
             row.appendChild(td);
         }
+        const playTd = document.createElement('td');
+        if (item.id) {
+            const audio = document.createElement('audio');
+            audio.controls = true;
+            audio.preload = 'none';
+            audio.src = `/api/library/audio/${encodeURIComponent(item.id)}`;
+            playTd.appendChild(audio);
+        }
+        row.appendChild(playTd);
+
         const actionTd = document.createElement('td');
         const editBtn = document.createElement('button');
         editBtn.className = 'btn btn-primary btn-sm';
@@ -270,6 +280,7 @@ function editTrack(track) {
         { id: 'editComposer', label: 'Composer', key: 'composer', tag: 'input' },
         { id: 'editBpm', label: 'BPM', key: 'bpm', tag: 'input' },
         { id: 'editComments', label: 'Comments', key: 'comments', tag: 'textarea' },
+        { id: 'editPath', label: 'Path', key: 'path', tag: 'input', readOnly: true },
     ];
 
     for (const f of fields) {
@@ -280,6 +291,7 @@ function editTrack(track) {
         ctrl.id = f.id;
         ctrl.className = 'form-control';
         ctrl.value = track[f.key] || '';
+        if (f.readOnly) ctrl.readOnly = true;
         label.appendChild(ctrl);
         editFormContainer.appendChild(label);
     }

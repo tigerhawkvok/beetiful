@@ -2,7 +2,7 @@
     --beet-color: #8a2b6f;
     --dark-bg: #1e1e1e;
     --sidebar-bg: #252525;
-    --table-bg: #353535; 
+    --table-bg: #353535;
     --input-bg: #333333;
     --border-color: #555555;
     --highlight-color: #4b2647;
@@ -70,7 +70,7 @@ button:hover, input:focus, select:focus, textarea:focus {
 }
 
 .tighten-table td {
-    background-color: var(--table-bg); 
+    background-color: var(--table-bg);
     color: #ffffff;
 }
 
@@ -101,19 +101,19 @@ button:hover, input:focus, select:focus, textarea:focus {
 }
 
 #clearFilters:hover {
-    background-color: #0056b3; 
+    background-color: #0056b3;
 }
 
 #logo-container {
     position: absolute;
     bottom: 50px;
-    right: 120px; 
+    right: 120px;
     z-index: 1000;
     display: flex;
     justify-content: center;
     align-items: center;
-    width: 250px; 
-    height: 250px; 
+    width: 250px;
+    height: 250px;
     background-color: #252525;
     border-radius: 10px;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
@@ -168,9 +168,9 @@ input[type="text"]:not(:placeholder-shown) {
 #commandBuilder textarea {
     background-color: #333333;
     color: #ffffff;
-    border: none; 
-    box-shadow: inset 0 0 0 0.2rem rgba(138, 43, 111, 1); 
-    border-radius: 3px; 
+    border: none;
+    box-shadow: inset 0 0 0 0.2rem rgba(138, 43, 111, 1);
+    border-radius: 3px;
     padding: 5px;
     margin: 5px 0;
 }
@@ -183,30 +183,30 @@ input[type="text"]:not(:placeholder-shown) {
 #commandBuilder input:focus,
 #commandBuilder select:focus,
 #commandBuilder textarea:focus {
-    background-color: #444444; 
-    outline: none; 
+    background-color: #444444;
+    outline: none;
 }
 
 
 #importOptions {
     padding: 10px;
-    background-color: #2e2e2e; 
+    background-color: #2e2e2e;
     color: #ffffff;
     border-radius: 5px;
 }
 
 
 #beetImportButton {
-    background-color: #4b2647; 
+    background-color: #4b2647;
     color: #ffffff;
-    border: none; 
+    border: none;
     padding: 10px 20px;
     cursor: pointer;
     border-radius: 5px;
 }
 
 #beetImportButton:hover {
-    background-color: #f805e8; 
+    background-color: #f805e8;
 }
 
 
@@ -215,14 +215,14 @@ input[type="text"]:not(:placeholder-shown) {
 }
 
 th {
-    cursor: pointer; 
-    position: relative; 
-    padding-right: 20px; 
+    cursor: pointer;
+    position: relative;
+    padding-right: 20px;
 }
 
 
 th.sortable::after {
-    content: ''; 
+    content: '';
 }
 
 
@@ -232,15 +232,18 @@ th.sortable::after {
     top: 50%;
     transform: translateY(-50%);
     font-size: 0.8em;
-    color: #cfcfcf; 
+    color: #cfcfcf;
 }
 
 
 th.asc .sort-arrow {
-    content: '▲'; 
+    content: '▲';
 }
 
 th.desc .sort-arrow {
-    content: '▼'; 
+    content: '▼';
 }
 
+#editFormContainer > label {
+    display: block;
+}

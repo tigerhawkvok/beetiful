@@ -1,5 +1,6 @@
-from flask import Flask, jsonify, request, render_template
+from flask import Flask, jsonify, request, render_template, send_file
 import os
+import mimetypes
 import subprocess
 
 
@@ -66,10 +67,14 @@ def run_command():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+LIBRARY_FIELDS = ['title', 'artist', 'album', 'genre', 'year', 'bpm', 'composer', 'comments', 'id', 'path']
+LIBRARY_FORMAT = '@@'.join(f'${f}' for f in LIBRARY_FIELDS)
+
+
 @app.route('/api/library', methods=['GET'])
 def get_library():
     """Fetch the library items including genre information."""
-    result = subprocess.run(['beet', 'list', '-f', '$title@@$artist@@$album@@$genre@@$year@@$bpm@@$composer@@$comments'], capture_output=True, text=True)
+    result = subprocess.run(['beet', 'list', '-f', LIBRARY_FORMAT], capture_output=True, text=True)
     if result.returncode == 0:
         items = [parse_library_item(line) for line in result.stdout.splitlines()]
         return jsonify({'items': items})
@@ -78,17 +83,24 @@ def get_library():
 
 def parse_library_item(line):
     """Parse a library item from the list output."""
-    fields = line.split('@@')  
-    return {
-        'title': fields[0] if len(fields) > 0 else '',
-        'artist': fields[1] if len(fields) > 1 else '',
-        'album': fields[2] if len(fields) > 2 else '',
-        'genre': fields[3] if len(fields) > 3 else '',
-        'year': fields[4] if len(fields) > 4 else '',
-        'bpm': fields[5] if len(fields) > 5 else '',
-        'composer': fields[6] if len(fields) > 6 else '',
-        'comments': fields[7] if len(fields) > 7 else ''
-    }
+    fields = line.split('@@')
+    return {name: (fields[i] if i < len(fields) else '') for i, name in enumerate(LIBRARY_FIELDS)}
+
+
+@app.route('/api/library/audio/<int:track_id>', methods=['GET'])
+def get_audio(track_id):
+    """Stream a track's audio file. Lazy: only invoked when the client plays."""
+    result = subprocess.run(['beet', 'list', '-f', '$path', f'id:{track_id}'], capture_output=True, text=True)
+    if result.returncode != 0:
+        return jsonify({'error': result.stderr}), 500
+    lines = result.stdout.splitlines()
+    if not lines:
+        return jsonify({'error': 'Track not found.'}), 404
+    file_path = lines[0]
+    if not os.path.isfile(file_path):
+        return jsonify({'error': 'Audio file missing on disk.'}), 404
+    mimetype, _ = mimetypes.guess_type(file_path)
+    return send_file(file_path, mimetype=mimetype or 'application/octet-stream', conditional=True)
 
 
         
