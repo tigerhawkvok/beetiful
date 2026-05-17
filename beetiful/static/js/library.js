@@ -219,45 +219,71 @@ document.getElementById('tableHeaders').addEventListener('click', (event) => {
 });
 function populateLibrary(items) {
     const libraryResults = document.getElementById('libraryResults');
-    libraryResults.innerHTML = '';  
+    libraryResults.innerHTML = '';
 
     items.forEach(item => {
         const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${item.title || ''}</td>  <!-- Title -->
-            <td>${item.artist || ''}</td>  <!-- Artist -->
-            <td>${item.album || ''}</td>  <!-- Album -->
-            <td>${item.genre || ''}</td>  <!-- Genre -->
-            <td>
-                <button class="btn btn-primary btn-sm" 
-                    onclick='editTrack(${JSON.stringify(item)})'>
-                    Edit
-                </button>
-            </td>
-        `;
+        for (const field of ['title', 'artist', 'album', 'genre']) {
+            const td = document.createElement('td');
+            td.textContent = item[field] || '';
+            row.appendChild(td);
+        }
+        const actionTd = document.createElement('td');
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn btn-primary btn-sm';
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => editTrack(item));
+        actionTd.appendChild(editBtn);
+        row.appendChild(actionTd);
         libraryResults.appendChild(row);
     });
 }
 
 function editTrack(track) {
-    const formHtml = `
-        <h5>Edit Track</h5>
-        <label>Title: <input type="text" id="editTitle" class="form-control" value="${track.title}"></label>
-        <label>Artist: <input type="text" id="editArtist" class="form-control" value="${track.artist}"></label>
-        <label>Album: <input type="text" id="editAlbum" class="form-control" value="${track.album}"></label>
-        <label>Year: <input type="text" id="editYear" class="form-control" value="${track.year}"></label>
-        <label>Genre: <input type="text" id="editGenre" class="form-control" value="${track.genre}"></label>
-        <label>Composer: <input type="text" id="editComposer" class="form-control" value="${track.composer}"></label>
-        <label>BPM: <input type="text" id="editBpm" class="form-control" value="${track.bpm}"></label>
-        <label>Comments: <textarea id="editComments" class="form-control"> ${track.comments}</textarea></label>
-        <button class="btn btn-warning mt-2" onclick="confirmAction('remove', '${track.title}', '${track.artist}', '${track.album}')">Remove</button>
-        <button class="btn btn-danger mt-2" onclick="confirmAction('delete', '${track.title}', '${track.artist}', '${track.album}')">Delete</button>
-        <button class="btn btn-success mt-2" onclick="saveTrack('${track.title}', '${track.artist}', '${track.album}')">Save</button>
-        
-        <button class="btn btn-secondary mt-2" onclick="closeEditForm()">Cancel</button>
-    `;
     const editFormContainer = document.getElementById('editFormContainer');
-    editFormContainer.innerHTML = formHtml; 
+    editFormContainer.innerHTML = '';
+    editFormContainer.style.display = '';
+
+    const heading = document.createElement('h5');
+    heading.textContent = 'Edit Track';
+    editFormContainer.appendChild(heading);
+
+    const fields = [
+        { id: 'editTitle', label: 'Title', key: 'title', tag: 'input' },
+        { id: 'editArtist', label: 'Artist', key: 'artist', tag: 'input' },
+        { id: 'editAlbum', label: 'Album', key: 'album', tag: 'input' },
+        { id: 'editYear', label: 'Year', key: 'year', tag: 'input' },
+        { id: 'editGenre', label: 'Genre', key: 'genre', tag: 'input' },
+        { id: 'editComposer', label: 'Composer', key: 'composer', tag: 'input' },
+        { id: 'editBpm', label: 'BPM', key: 'bpm', tag: 'input' },
+        { id: 'editComments', label: 'Comments', key: 'comments', tag: 'textarea' },
+    ];
+
+    for (const f of fields) {
+        const label = document.createElement('label');
+        label.textContent = f.label + ': ';
+        const ctrl = document.createElement(f.tag);
+        if (f.tag === 'input') ctrl.type = 'text';
+        ctrl.id = f.id;
+        ctrl.className = 'form-control';
+        ctrl.value = track[f.key] || '';
+        label.appendChild(ctrl);
+        editFormContainer.appendChild(label);
+    }
+
+    const buttons = [
+        { label: 'Remove', cls: 'btn btn-warning mt-2', onClick: () => confirmAction('remove', track.title, track.artist, track.album) },
+        { label: 'Delete', cls: 'btn btn-danger mt-2', onClick: () => confirmAction('delete', track.title, track.artist, track.album) },
+        { label: 'Save', cls: 'btn btn-success mt-2', onClick: () => saveTrack(track.title, track.artist, track.album) },
+        { label: 'Cancel', cls: 'btn btn-secondary mt-2', onClick: closeEditForm },
+    ];
+    for (const b of buttons) {
+        const btn = document.createElement('button');
+        btn.className = b.cls;
+        btn.textContent = b.label;
+        btn.addEventListener('click', b.onClick);
+        editFormContainer.appendChild(btn);
+    }
 }
 
 function saveTrack(originalTitle, originalArtist, originalAlbum) {
@@ -366,27 +392,33 @@ function debugLibrary() {
 
 function confirmAction(action, title, artist, album) {
     const actionText = action === 'delete' ? 'delete this track? This action cannot be undone.' : 'remove this track from the library?';
-    const modalHtml = `
-        <div class="modal fade" id="confirmationModal" tabindex="-1" aria-labelledby="confirmationModalLabel" aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        Are you sure you want to ${actionText}
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn btn-danger" onclick="executeAction('${action}', '${title}', '${artist}', '${album}')">Confirm</button>
-                    </div>
+
+    document.getElementById('confirmationModal')?.remove();
+
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'confirmationModal';
+    modal.tabIndex = -1;
+    modal.setAttribute('aria-labelledby', 'confirmationModalLabel');
+    modal.setAttribute('aria-hidden', 'true');
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmationModalLabel">Confirm Action</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">Are you sure you want to ${actionText}</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmActionBtn">Confirm</button>
                 </div>
             </div>
         </div>
     `;
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-    const confirmationModal = new bootstrap.Modal(document.getElementById('confirmationModal'));
+    document.body.appendChild(modal);
+    modal.querySelector('#confirmActionBtn').addEventListener('click', () => executeAction(action, title, artist, album));
+    const confirmationModal = new bootstrap.Modal(modal);
     confirmationModal.show();
 }
 
