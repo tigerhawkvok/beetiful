@@ -622,9 +622,9 @@ function runDestructive(endpoint, body, verb) {
     })
     .catch(error => {
         if (error.name === 'AbortError') {
-            alert(`${verb.charAt(0).toUpperCase() + verb.slice(1)} timed out after 30 seconds. The server may still be processing — refresh to check.`);
+            showToast(`${verb.charAt(0).toUpperCase() + verb.slice(1)} timed out after 30 seconds. The server may still be processing — refresh to check.`, 'danger');
         } else {
-            alert(`Error ${verb}ing track: ${error.message}`);
+            showToast(`Error ${verb}ing track: ${error.message}`, 'danger');
         }
     })
     .finally(() => {
@@ -639,11 +639,11 @@ function closeEditForm() {
     if (el) bootstrap.Offcanvas.getOrCreateInstance(el).hide();
 }
 
-function showToast(message) {
+function showToast(message, variant) {
     const container = document.getElementById('toastContainer');
     if (!container) { console.log(message); return; }
     const toastEl = document.createElement('div');
-    toastEl.className = 'toast align-items-center text-bg-success border-0';
+    toastEl.className = `toast align-items-center text-bg-${variant || 'success'} border-0`;
     toastEl.setAttribute('role', 'status');
     toastEl.setAttribute('aria-live', 'polite');
     toastEl.setAttribute('aria-atomic', 'true');
