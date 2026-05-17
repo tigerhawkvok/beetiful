@@ -2,7 +2,8 @@
 name = "beetiful"
 readme = "README.md"
 description = "A Beetiful web interface powered by Beets"
-version = "0.1.0"
+version = "0.2.0"
+requires-python = ">=3.13"
 dependencies = [
     "beautifulsoup4==4.12.3",
     "blinker==1.8.2",
@@ -31,7 +32,6 @@ requires = ["flit_core<4"]
 build-backend = "flit_core.buildapi"
 
 [project.urls]
-"Homepage" = "http://github.com/Vansmak/beetiful"
-"Bug Reports" = "https://github.com/Vansmak/beetiful/issues"
-"Source" = "https://github.com/Vansmak/beetiful"
-
+"Homepage" = "http://github.com/tigerhawkvok/beetiful"
+"Bug Reports" = "https://github.com/tigerhawkvok/beetiful/issues"
+"Source" = "https://github.com/tigerhawkvok/beetiful"
