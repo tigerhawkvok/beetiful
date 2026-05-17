@@ -322,10 +322,15 @@ function saveTrack(originalTitle, originalArtist, originalAlbum) {
         comments: document.getElementById('editComments').value,
     };
 
+    const overlay = showBusyOverlay(document.getElementById('editOffcanvas'), 'Saving…');
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     fetch('/api/library/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ originalTitle, originalArtist, originalAlbum, updatedTrack })
+        body: JSON.stringify({ originalTitle, originalArtist, originalAlbum, updatedTrack }),
+        signal: controller.signal
     })
     .then(response => response.json().then(data => ({ ok: response.ok, data })))
     .then(({ ok, data }) => {
@@ -334,8 +339,31 @@ function saveTrack(originalTitle, originalArtist, originalAlbum) {
         fetchLibrary();
     })
     .catch(error => {
-        alert('Error updating track: ' + error.message);
+        if (error.name === 'AbortError') {
+            alert('Save timed out after 30 seconds. The server may still be processing — refresh to check.');
+        } else {
+            alert('Error updating track: ' + error.message);
+        }
+    })
+    .finally(() => {
+        clearTimeout(timeoutId);
+        overlay.remove();
     });
+}
+
+function showBusyOverlay(target, label) {
+    const overlay = document.createElement('div');
+    overlay.className = 'busy-overlay';
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner-border text-light';
+    spinner.setAttribute('role', 'status');
+    const sr = document.createElement('span');
+    sr.className = 'visually-hidden';
+    sr.textContent = label || 'Loading…';
+    spinner.appendChild(sr);
+    overlay.appendChild(spinner);
+    target.appendChild(overlay);
+    return overlay;
 }
 
 function removeTrack(title, artist, album) {
