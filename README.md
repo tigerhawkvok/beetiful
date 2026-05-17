@@ -55,10 +55,9 @@ Create a `.env` file in the project root to configure Beets-specific settings. H
 
     # Path to your music library
     LIBRARY_PATH=/music
-
-    # Add any other environment-specific settings here
-    PORT=
     ```
+
+    Beetiful manages its own `FLASK_PORT` entry in `.env` — see "Running the Application" below.
 5. **Running the Application**
 
 To start the application, run the following command from the project root:
@@ -67,15 +66,21 @@ To start the application, run the following command from the project root:
 python app.py
 ```
 
-Open your browser and navigate to `http://127.0.0.1:3001`.
+On startup Beetiful prints its listening URL, e.g. `Beetiful listening on http://127.0.0.1:4732/` — open that in your browser.
 
 By default Beetiful binds only to loopback (`127.0.0.1`) and runs under [waitress](https://github.com/Pylons/waitress), a production-grade WSGI server, so it won't trip Flask's "development server" warnings.
+
+#### Port selection
+
+On first run (no `FLASK_PORT` in `.env`) Beetiful picks a random free port in the range 3000-8000, saves it to `.env` as `FLASK_PORT=N`, and reuses it on every subsequent run. The randomization makes the port stable per-host but not predictable across hosts, which slightly shrinks the attack surface compared to a well-known default. If the first random pick is already in use, Beetiful retries up to 3 times before giving up.
+
+To change the port: edit `FLASK_PORT` in `.env`, delete the line to re-randomize on next run, or pass `--port N` for a one-off override (this does not modify `.env`).
 
 #### Flags
 
 | Flag | Effect |
 | --- | --- |
-| `--port N` | TCP port to bind. Defaults to the `FLASK_PORT` env var, or `3001`. |
+| `--port N` | One-off port override for this invocation. Does not modify `.env`. |
 | `--allow-local-subnet` | Also accept connections from the host's local `/24` subnet (e.g. `192.168.1.0/24` if the host's LAN IP is `192.168.1.50`). Loopback is still allowed; everything else is rejected with HTTP 403. The host/subnet is detected automatically at startup. |
 | `--debug` | Run with Flask's development server (auto-reload + interactive debugger). Off by default. |
 
@@ -91,7 +96,7 @@ python app.py --allow-local-subnet
 # Localhost only, Flask dev server with debugger
 python app.py --debug
 
-# LAN-accessible dev server on a custom port
+# LAN-accessible dev server on a one-off port
 python app.py --allow-local-subnet --debug --port 8080
 ```
 
