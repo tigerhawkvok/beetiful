@@ -1,9 +1,37 @@
 window.onload = function() {
-    getStats();              
-    viewConfig();            
-    
-    setupCommandDropdown();  
+    getStats();
+    setupConfigEditor();
+    viewConfig();
+
+    setupCommandDropdown();
 };
+
+function setupConfigEditor() {
+    const textarea = document.getElementById('configTextArea');
+    if (!textarea) return;
+    textarea.addEventListener('input', rehighlightConfig);
+    textarea.addEventListener('scroll', syncConfigOverlayScroll);
+}
+
+function rehighlightConfig() {
+    const textarea = document.getElementById('configTextArea');
+    const overlay = document.getElementById('configHighlight');
+    if (!textarea || !overlay || typeof hljs === 'undefined') return;
+    const text = textarea.value;
+    const result = hljs.highlight(text, { language: 'yaml', ignoreIllegals: true });
+    // Trailing newline keeps the highlight box from collapsing when the textarea ends on a blank line.
+    overlay.innerHTML = result.value + '\n';
+    syncConfigOverlayScroll();
+}
+
+function syncConfigOverlayScroll() {
+    const textarea = document.getElementById('configTextArea');
+    const overlay = document.getElementById('configHighlight');
+    if (!textarea || !overlay) return;
+    const pre = overlay.parentElement;
+    pre.scrollTop = textarea.scrollTop;
+    pre.scrollLeft = textarea.scrollLeft;
+}
 
 function getStats() {
     fetch('/api/stats')
@@ -193,9 +221,10 @@ function formatCommandOutput(output) {
 
 function viewConfig() {
     fetch('/api/config')
-        .then(response => response.text())  
+        .then(response => response.text())
         .then(data => {
-            document.getElementById('configTextArea').value = data;  
+            document.getElementById('configTextArea').value = data;
+            rehighlightConfig();
         })
         .catch(error => {
             document.getElementById('configResult').textContent = 'Error loading config: ' + error.message;
