@@ -17,9 +17,11 @@ function fetchLibrary() {
         .then(response => response.json())
         .then(data => {
             if (Array.isArray(data.items)) {
-                libraryData = data.items; 
-                filteredData = libraryData; 
-                showPage(currentPage);    
+                libraryData = data.items;
+                rebuildFilteredData();
+                const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
+                currentPage = Math.min(currentPage, totalPages);
+                showPage(currentPage);
             } else {
                 console.error('Unexpected data format:', data);
                 document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">No library data found.</td></tr>';
@@ -29,6 +31,31 @@ function fetchLibrary() {
             console.error('Error fetching library data:', error);
             document.getElementById('libraryResults').innerHTML = '<tr><td colspan="5">Error loading library data.</td></tr>';
         });
+}
+
+function rebuildFilteredData() {
+    const filterTitle = document.getElementById('filterTitle').value.toLowerCase();
+    const filterArtist = document.getElementById('filterArtist').value.toLowerCase();
+    const filterAlbum = document.getElementById('filterAlbum').value.toLowerCase();
+    const filterGenre = document.getElementById('filterGenre').value.toLowerCase();
+
+    filteredData = libraryData.filter(item => (
+        (!filterTitle || item.title.toLowerCase().includes(filterTitle)) &&
+        (!filterArtist || item.artist.toLowerCase().includes(filterArtist)) &&
+        (!filterAlbum || item.album.toLowerCase().includes(filterAlbum)) &&
+        (!filterGenre || item.genre.toLowerCase().includes(filterGenre))
+    ));
+
+    if (sortOrder.column !== null) {
+        const { column, direction } = sortOrder;
+        filteredData.sort((a, b) => {
+            const aValue = Object.values(a)[column]?.toLowerCase() || '';
+            const bValue = Object.values(b)[column]?.toLowerCase() || '';
+            if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+            if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+            return 0;
+        });
+    }
 }
 
 
@@ -43,25 +70,11 @@ function showPage(page) {
 
 
 function applyFilters() {
-    const filterTitle = document.getElementById('filterTitle').value.toLowerCase();
-    const filterArtist = document.getElementById('filterArtist').value.toLowerCase();
-    const filterAlbum = document.getElementById('filterAlbum').value.toLowerCase();
-    const filterGenre = document.getElementById('filterGenre').value.toLowerCase();
-
-    filteredData = libraryData.filter(item => {
-        return (
-            (!filterTitle || item.title.toLowerCase().includes(filterTitle)) &&
-            (!filterArtist || item.artist.toLowerCase().includes(filterArtist)) &&
-            (!filterAlbum || item.album.toLowerCase().includes(filterAlbum)) &&
-            (!filterGenre || item.genre.toLowerCase().includes(filterGenre))
-        );
-    });
-
-    
     document.querySelectorAll('th').forEach(th => th.classList.remove('asc', 'desc'));
     sortOrder = { column: null, direction: 'asc' };
 
-    currentPage = 1; 
+    rebuildFilteredData();
+    currentPage = 1;
     showPage(currentPage);
 }
 
