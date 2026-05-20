@@ -167,7 +167,7 @@ function renderCluster(cluster, idx) {
 
         tr.appendChild(cell(t.title));
         tr.appendChild(cell(t.artist));
-        tr.appendChild(cell(t.album));
+        tr.appendChild(albumCell(t));
         tr.appendChild(cell(t.length));
         tr.appendChild(cell([t.format, t.bitrate ? `${t.bitrate}kbps` : null].filter(Boolean).join(' · ')));
 
@@ -223,6 +223,32 @@ function renderCluster(cluster, idx) {
 function cell(text) {
     const td = document.createElement('td');
     td.textContent = text || '';
+    return td;
+}
+
+// Album cell with a fixed-size, lazy-loaded cover thumbnail. The 36px slot is reserved
+// up-front (and on error) so populating art never reflows the table.
+function albumCell(t) {
+    const td = document.createElement('td');
+    const wrap = document.createElement('div');
+    wrap.className = 'd-flex align-items-center gap-2';
+    const art = document.createElement('img');
+    art.className = 'album-art';
+    art.width = 36;
+    art.height = 36;
+    art.loading = 'lazy';
+    art.alt = '';
+    art.src = `/api/library/art/${encodeURIComponent(t.id)}`;
+    art.addEventListener('error', () => {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'album-art album-art-missing';
+        art.replaceWith(placeholder);
+    });
+    const span = document.createElement('span');
+    span.textContent = t.album || '';
+    wrap.appendChild(art);
+    wrap.appendChild(span);
+    td.appendChild(wrap);
     return td;
 }
 

@@ -1,11 +1,14 @@
 from typing import TYPE_CHECKING, cast
 from flask import Flask, jsonify, request, render_template, send_file
+from collections import OrderedDict
 import os
 import mimetypes
 import subprocess
+import threading
 
 from . import duplicates
 from . import hashscan
+from . import artwork
 
 
 app = Flask(__name__)
@@ -119,6 +122,69 @@ def _fetch_dup_items():
     return items
 
 
+# id -> filesystem path, warmed by list/duplicate fetches so the art and audio
+# endpoints don't each spawn a `beet` subprocess.
+_PATH_CACHE = {}
+
+
+def _remember_paths(items):
+    for it in items:
+        if it.get('path'):
+            _PATH_CACHE[it['id']] = it['path']
+
+
+def _path_for(track_id):
+    cached = _PATH_CACHE.get(track_id)
+    if cached:
+        return cached
+    result = subprocess.run(['beet', 'list', '-f', '$path', f'id:{int(track_id)}'],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        return None
+    lines = result.stdout.splitlines()
+    if not lines:
+        return None
+    _PATH_CACHE[track_id] = lines[0]
+    return lines[0]
+
+
+def _raw_art(path):
+    """Return (mime, bytes) of full-size art: embedded first, then a cover file."""
+    art = artwork.embedded_art(path)
+    if art:
+        return art
+    cover = artwork.cover_file(path)
+    if cover and os.path.isfile(cover):
+        with open(cover, 'rb') as f:
+            data = f.read()
+        mime, _ = mimetypes.guess_type(cover)
+        return (mime or 'image/jpeg', data)
+    return None
+
+
+# Bounded LRU of downscaled thumbnails keyed by (id, size) so NFS reads + decodes happen
+# once, not per render. `False` is a negative cache for tracks with no art.
+_ART_CACHE = OrderedDict()
+_ART_CACHE_MAX = 1024
+_art_lock = threading.Lock()
+
+
+def _art_cache_get(key):
+    with _art_lock:
+        if key in _ART_CACHE:
+            _ART_CACHE.move_to_end(key)
+            return _ART_CACHE[key]
+    return None
+
+
+def _art_cache_put(key, value):
+    with _art_lock:
+        _ART_CACHE[key] = value
+        _ART_CACHE.move_to_end(key)
+        while len(_ART_CACHE) > _ART_CACHE_MAX:
+            _ART_CACHE.popitem(last=False)
+
+
 def _metadata_richness(track):
     """Count populated descriptive fields — used to prefer the better-tagged copy."""
     return sum(1 for f in _RICHNESS_FIELDS if str(track.get(f) or '').strip())
@@ -145,6 +211,8 @@ def get_duplicates():
         items = _fetch_dup_items()
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
+
+    _remember_paths(items)
 
     # Inject cached file hashes (sidecar) so the definite tier can match identical files.
     hashes = hashscan.cached_hashes()
@@ -196,6 +264,33 @@ def start_hash_scan():
 @app.route('/api/duplicates/scan/status', methods=['GET'])
 def hash_scan_status():
     return jsonify(hashscan.get_status())
+
+
+@app.route('/api/library/art/<int:track_id>', methods=['GET'])
+def get_art(track_id):
+    """Serve a downscaled WebP thumbnail of a track's cover art (embedded or cover file)."""
+    size = request.args.get('size', default=96, type=int)
+    size = max(16, min(size, 512))
+    key = (track_id, size)
+
+    cached = _art_cache_get(key)
+    if cached is None:
+        path = _path_for(track_id)
+        raw = _raw_art(path) if path else None
+        if not raw:
+            _art_cache_put(key, False)  # negative cache: don't re-read missing art
+            cached = False
+        else:
+            # Fall back to the original bytes if Pillow can't decode/encode it.
+            cached = artwork.thumbnail(raw[1], size) or raw
+            _art_cache_put(key, cached)
+
+    if cached is False:
+        return ('', 404)
+    mime, data = cached
+    resp = app.response_class(data, mimetype=mime)
+    resp.headers['Cache-Control'] = 'public, max-age=86400'
+    return resp
 
 
 @app.route('/api/stats', methods=['GET'])

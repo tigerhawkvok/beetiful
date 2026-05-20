@@ -22,6 +22,20 @@ body {
     color: #cfcfcf;
 }
 
+/* Album thumbnails: fixed slot so lazy-loaded art never reflows the table. */
+.album-art {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    object-fit: cover;
+    border-radius: 3px;
+    background: #2a2a2a;
+}
+
+.album-art-missing {
+    background: repeating-linear-gradient(45deg, #2a2a2a, #2a2a2a 4px, #333 4px, #333 8px);
+}
+
 /* Duplicate review: de-emphasize the copies that aren't the chosen keeper. */
 tr.dup-unselected {
     opacity: 0.87;
