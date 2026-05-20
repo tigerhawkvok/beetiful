@@ -238,18 +238,56 @@ function albumCell(t) {
     art.height = 36;
     art.loading = 'lazy';
     art.alt = '';
+    art.style.cursor = 'zoom-in';
+    art.title = 'Click for full-size art';
     art.src = `/api/library/art/${encodeURIComponent(t.id)}`;
+    art.addEventListener('click', () => openArtLightbox(t.id));
     art.addEventListener('error', () => {
         const placeholder = document.createElement('div');
         placeholder.className = 'album-art album-art-missing';
         art.replaceWith(placeholder);
     });
-    const span = document.createElement('span');
-    span.textContent = t.album || '';
+    const text = document.createElement('div');
+    const name = document.createElement('div');
+    name.textContent = t.album || '';
+    text.appendChild(name);
+    if (t.art_w && t.art_h) {
+        const res = document.createElement('div');
+        res.className = 'small text-muted';
+        res.textContent = `art ${t.art_w}×${t.art_h}`;
+        text.appendChild(res);
+    }
     wrap.appendChild(art);
-    wrap.appendChild(span);
+    wrap.appendChild(text);
     td.appendChild(wrap);
     return td;
+}
+
+// Full-size art lightbox. Shows the original at true 1:1 resolution (scrollable if it
+// exceeds the viewport) with a dimensions caption, so resolution can be judged honestly.
+function openArtLightbox(trackId) {
+    const overlay = document.createElement('div');
+    overlay.className = 'art-lightbox';
+
+    const img = document.createElement('img');
+    img.className = 'art-lightbox-img';
+    img.src = `/api/library/art/${encodeURIComponent(trackId)}?full=1`;
+    img.addEventListener('click', e => e.stopPropagation());  // clicks on the art don't dismiss
+
+    const caption = document.createElement('div');
+    caption.className = 'art-lightbox-caption';
+    caption.textContent = 'Loading…';
+    img.addEventListener('load', () => { caption.textContent = `${img.naturalWidth} × ${img.naturalHeight}`; });
+    img.addEventListener('error', () => { caption.textContent = 'No full-size art.'; });
+
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    overlay.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+
+    overlay.appendChild(img);
+    overlay.appendChild(caption);
+    document.body.appendChild(overlay);
 }
 
 // Dim every row except the chosen keeper so "I'm active" reads at a glance.

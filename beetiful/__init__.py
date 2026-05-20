@@ -148,20 +148,6 @@ def _path_for(track_id):
     return lines[0]
 
 
-def _raw_art(path):
-    """Return (mime, bytes) of full-size art: embedded first, then a cover file."""
-    art = artwork.embedded_art(path)
-    if art:
-        return art
-    cover = artwork.cover_file(path)
-    if cover and os.path.isfile(cover):
-        with open(cover, 'rb') as f:
-            data = f.read()
-        mime, _ = mimetypes.guess_type(cover)
-        return (mime or 'image/jpeg', data)
-    return None
-
-
 # Bounded LRU of downscaled thumbnails keyed by (id, size) so NFS reads + decodes happen
 # once, not per render. `False` is a negative cache for tracks with no art.
 _ART_CACHE = OrderedDict()
@@ -191,13 +177,14 @@ def _metadata_richness(track):
 
 
 def _suggest_keep(member_ids, by_id):
-    """Pick the best copy: codec class, then bitrate (within codec), length, richer tags, lowest id."""
+    """Pick the best copy: codec, bitrate (within codec), length, richer tags, larger art, lowest id."""
     def rank(track):
         return (
             _codec_rank(track.get('format')),
             track.get('bitrate_kbps') or 0,
             track.get('length_s') or 0,
             _metadata_richness(track),
+            track.get('art_px') or 0,
             -track['id'],
         )
     return max(member_ids, key=lambda mid: rank(by_id[mid]))
@@ -216,8 +203,12 @@ def get_duplicates():
 
     # Inject cached file hashes (sidecar) so the definite tier can match identical files.
     hashes = hashscan.cached_hashes()
+    art_dims = hashscan.art_dims()
     for it in items:
         it['content_hash'] = hashes.get(it['id'], '')
+        wh = art_dims.get(it['id'])
+        it['art_w'], it['art_h'] = wh if wh else (None, None)
+        it['art_px'] = max(wh) if wh else 0
 
     by_id = {it['id']: it for it in items}
     clusters = duplicates.find_duplicates(items, tiers=tiers)
@@ -242,6 +233,8 @@ def get_duplicates():
             'bitrate': by_id[mid]['bitrate_kbps'],
             'format': by_id[mid]['format'],
             'path': by_id[mid]['path'],
+            'art_w': by_id[mid]['art_w'],
+            'art_h': by_id[mid]['art_h'],
         }
         for mid in referenced
     }
@@ -268,7 +261,18 @@ def hash_scan_status():
 
 @app.route('/api/library/art/<int:track_id>', methods=['GET'])
 def get_art(track_id):
-    """Serve a downscaled WebP thumbnail of a track's cover art (embedded or cover file)."""
+    """Serve cover art (embedded or cover file). `?full=1` returns the original at true
+    resolution; otherwise a downscaled WebP thumbnail (cached)."""
+    if request.args.get('full'):
+        path = _path_for(track_id)
+        raw = artwork.raw_art(path) if path else None
+        if not raw:
+            return ('', 404)
+        mime, data = raw
+        resp = app.response_class(data, mimetype=mime)
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
+
     size = request.args.get('size', default=96, type=int)
     size = max(16, min(size, 512))
     key = (track_id, size)
@@ -276,12 +280,16 @@ def get_art(track_id):
     cached = _art_cache_get(key)
     if cached is None:
         path = _path_for(track_id)
-        raw = _raw_art(path) if path else None
+        raw = artwork.raw_art(path) if path else None
         if not raw:
             _art_cache_put(key, False)  # negative cache: don't re-read missing art
             cached = False
         else:
-            # Fall back to the original bytes if Pillow can't decode/encode it.
+            # We've decoded the original anyway — record its true dimensions for the
+            # duplicate view and keep-ranking, then cache the downscaled thumbnail.
+            dims = artwork.dimensions_of(raw[1])
+            if dims:
+                hashscan.record_art_dims(track_id, dims[0], dims[1])
             cached = artwork.thumbnail(raw[1], size) or raw
             _art_cache_put(key, cached)
 

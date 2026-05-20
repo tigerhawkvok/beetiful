@@ -7,6 +7,7 @@ users who don't embed). Returns (mimetype, bytes) or None.
 
 import base64
 import io
+import mimetypes
 import os
 
 from mutagen import File as MutagenFile
@@ -103,3 +104,32 @@ def cover_file(path):
             if actual:
                 return os.path.join(directory, actual)
     return None
+
+
+def raw_art(path):
+    """Return (mime, bytes) of full-size art: embedded first, then a cover file. Or None."""
+    art = embedded_art(path)
+    if art:
+        return art
+    cover = cover_file(path)
+    if cover and os.path.isfile(cover):
+        with open(cover, 'rb') as f:
+            data = f.read()
+        mime, _ = mimetypes.guess_type(cover)
+        return (mime or 'image/jpeg', data)
+    return None
+
+
+def dimensions_of(data):
+    """(width, height) of raw image bytes, header-only (no full decode). None on failure."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            return im.size
+    except Exception:
+        return None
+
+
+def art_dimensions(path):
+    """(width, height) of a track's cover art, or None."""
+    raw = raw_art(path)
+    return dimensions_of(raw[1]) if raw else None

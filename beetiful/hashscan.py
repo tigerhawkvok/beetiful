@@ -15,6 +15,8 @@ import sqlite3
 import threading
 import time
 
+from . import artwork
+
 CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'hashcache.sqlite')
 
 _state_lock = threading.Lock()
@@ -34,6 +36,10 @@ def _connect():
         'CREATE TABLE IF NOT EXISTS file_hash '
         '(item_id INTEGER PRIMARY KEY, size INTEGER, mtime REAL, sha256 TEXT)'
     )
+    conn.execute(
+        'CREATE TABLE IF NOT EXISTS art_dims '
+        '(item_id INTEGER PRIMARY KEY, width INTEGER, height INTEGER)'
+    )
     return conn
 
 
@@ -47,6 +53,25 @@ def cached_hashes():
     conn = _connect()
     try:
         return {row[0]: row[1] for row in conn.execute('SELECT item_id, sha256 FROM file_hash')}
+    finally:
+        conn.close()
+
+
+def art_dims():
+    """Return {item_id: (width, height)} for every cached art-dimension row."""
+    conn = _connect()
+    try:
+        return {row[0]: (row[1], row[2]) for row in conn.execute('SELECT item_id, width, height FROM art_dims')}
+    finally:
+        conn.close()
+
+
+def record_art_dims(item_id, width, height):
+    """Upsert one track's art dimensions (called opportunistically from request threads)."""
+    conn = _connect()
+    try:
+        conn.execute('INSERT OR REPLACE INTO art_dims VALUES (?,?,?)', (item_id, width, height))
+        conn.commit()
     finally:
         conn.close()
 
@@ -83,6 +108,7 @@ def _run(items):
         conn = _connect()
         existing = {row[0]: (row[1], row[2])
                     for row in conn.execute('SELECT item_id, size, mtime FROM file_hash')}
+        have_dims = {row[0] for row in conn.execute('SELECT item_id FROM art_dims')}
         for it in items:
             iid, path = it.get('id'), it.get('path')
             try:
@@ -96,6 +122,13 @@ def _run(items):
                                      (iid, st.st_size, st.st_mtime, digest))
                         conn.commit()
                         _bump('hashed')
+                    # Backfill art dimensions in the same pass (even for hash-cached files).
+                    if iid not in have_dims:
+                        dims = artwork.art_dimensions(path)
+                        if dims:
+                            conn.execute('INSERT OR REPLACE INTO art_dims VALUES (?,?,?)',
+                                         (iid, dims[0], dims[1]))
+                            conn.commit()
                 else:
                     _bump('errors')
             except OSError:
