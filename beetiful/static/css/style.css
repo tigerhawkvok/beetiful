@@ -22,6 +22,19 @@ body {
     color: #cfcfcf;
 }
 
+/* Duplicate review: de-emphasize the copies that aren't the chosen keeper. */
+tr.dup-unselected {
+    opacity: 0.87;
+}
+
+tr.dup-hover-remove > td {
+    background-color: rgba(255, 193, 7, 0.22) !important;
+}
+
+tr.dup-hover-delete > td {
+    background-color: rgba(220, 53, 69, 0.22) !important;
+}
+
 .busy-overlay {
     position: absolute;
     inset: 0;

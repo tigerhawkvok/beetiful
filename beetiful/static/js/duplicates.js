@@ -161,6 +161,7 @@ function renderCluster(cluster, idx) {
         radio.name = `keep-${idx}`;
         radio.value = id;
         radio.checked = id === cluster.keep;
+        radio.addEventListener('change', () => updateRowEmphasis(card));
         keepTd.appendChild(radio);
         tr.appendChild(keepTd);
 
@@ -197,20 +198,25 @@ function renderCluster(cluster, idx) {
     footer.className = 'card-footer d-flex align-items-center gap-2';
     const label = document.createElement('span');
     label.className = 'small text-muted me-1';
-    label.textContent = 'Keep selected, and with others';
+    label.textContent = 'Keep selected and';
     const removeBtn = document.createElement('button');
     removeBtn.className = 'btn btn-warning btn-sm';
-    removeBtn.textContent = 'Remove from library';
+    removeBtn.textContent = 'Remove others from library';
     removeBtn.addEventListener('click', () => actOnOthers(idx, cluster, 'remove', card));
+    removeBtn.addEventListener('mouseenter', () => setHoverHighlight(card, 'dup-hover-remove', true));
+    removeBtn.addEventListener('mouseleave', () => setHoverHighlight(card, 'dup-hover-remove', false));
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn btn-danger btn-sm';
-    deleteBtn.textContent = 'Delete from disk';
+    deleteBtn.textContent = 'Delete others from disk';
     deleteBtn.addEventListener('click', () => actOnOthers(idx, cluster, 'delete', card));
+    deleteBtn.addEventListener('mouseenter', () => setHoverHighlight(card, 'dup-hover-delete', true));
+    deleteBtn.addEventListener('mouseleave', () => setHoverHighlight(card, 'dup-hover-delete', false));
     footer.appendChild(label);
     footer.appendChild(removeBtn);
     footer.appendChild(deleteBtn);
     card.appendChild(footer);
 
+    updateRowEmphasis(card);
     return card;
 }
 
@@ -218,6 +224,22 @@ function cell(text) {
     const td = document.createElement('td');
     td.textContent = text || '';
     return td;
+}
+
+// Dim every row except the chosen keeper so "I'm active" reads at a glance.
+function updateRowEmphasis(card) {
+    card.querySelectorAll('tbody tr').forEach(tr => {
+        const radio = tr.querySelector('input[type="radio"]');
+        tr.classList.toggle('dup-unselected', !(radio && radio.checked));
+    });
+}
+
+// On hovering an action button, tint the rows it would affect (the non-keepers).
+function setHoverHighlight(card, cls, on) {
+    card.querySelectorAll('tbody tr').forEach(tr => {
+        const radio = tr.querySelector('input[type="radio"]');
+        tr.classList.toggle(cls, on && !(radio && radio.checked));
+    });
 }
 
 function actOnOthers(idx, cluster, action, card) {
