@@ -167,7 +167,7 @@ function renderCluster(cluster, idx) {
 
         tr.appendChild(titleCell(t, cluster, card));
         tr.appendChild(cell(t.artist));
-        tr.appendChild(albumCell(t));
+        tr.appendChild(albumCell(t, cluster, card));
         tr.appendChild(cell(t.length));
         tr.appendChild(cell([t.format, t.bitrate ? `${t.bitrate}kbps` : null].filter(Boolean).join(' · ')));
 
@@ -310,7 +310,7 @@ function saveRename(t, newTitle, titleSpan, card, bsModal) {
 
 // Album cell with a fixed-size, lazy-loaded cover thumbnail. The 36px slot is reserved
 // up-front (and on error) so populating art never reflows the table.
-function albumCell(t) {
+function albumCell(t, cluster, card) {
     const td = document.createElement('td');
     const wrap = document.createElement('div');
     wrap.className = 'd-flex align-items-center gap-2';
@@ -331,6 +331,7 @@ function albumCell(t) {
     });
     const text = document.createElement('div');
     const name = document.createElement('div');
+    name.className = 'dup-album-name';
     name.textContent = t.album || '';
     text.appendChild(name);
     if (t.art_w && t.art_h) {
@@ -339,10 +340,73 @@ function albumCell(t) {
         res.textContent = `art ${t.art_w}×${t.art_h}`;
         text.appendChild(res);
     }
+    // If this copy can fill a descriptive field that a sibling is missing, offer to.
+    if (clusterCopyTargets(t, cluster).length) {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-outline-secondary btn-sm py-0 mt-1 dup-copy-fields';
+        btn.textContent = 'Copy to missing';
+        btn.title = 'Copy this copy’s album/genre/year/composer into siblings that lack them (does not change the keeper)';
+        btn.addEventListener('click', () => copyToMissing(t, cluster, card));
+        text.appendChild(btn);
+    }
     wrap.appendChild(art);
     wrap.appendChild(text);
     td.appendChild(wrap);
     return td;
+}
+
+const COPY_FIELDS = ['album', 'genre', 'year', 'composer'];
+
+// Members (other than the source) missing at least one field the source has populated.
+function clusterCopyTargets(sourceTrack, cluster) {
+    return cluster.members.filter(id => {
+        if (id === sourceTrack.id) return false;
+        const m = dupTracks[String(id)] || {};
+        return COPY_FIELDS.some(f =>
+            String(sourceTrack[f] || '').trim() && !String(m[f] || '').trim());
+    });
+}
+
+function copyToMissing(sourceTrack, cluster, card) {
+    const targetIds = clusterCopyTargets(sourceTrack, cluster);
+    if (!targetIds.length) return;
+    fetch('/api/library/copy-fields', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source_id: sourceTrack.id, target_ids: targetIds })
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (!ok) throw new Error(d.error || 'copy failed');
+        Object.entries(d.updated || {}).forEach(([id, fields]) => {
+            const ct = dupTracks[id];
+            if (ct) Object.assign(ct, fields);
+            if (fields.album !== undefined) {
+                const nameEl = card.querySelector(`tr[data-member-id="${id}"] .dup-album-name`);
+                if (nameEl) nameEl.textContent = fields.album;
+            }
+        });
+        Object.entries(d.paths || {}).forEach(([id, p]) => {
+            if (!p) return;
+            const ct = dupTracks[id];
+            if (ct) ct.path = p;
+            const pathEl = card.querySelector(`tr[data-member-id="${id}"] .dup-path`);
+            if (pathEl) { pathEl.textContent = p; pathEl.title = p; }
+        });
+        refreshCopyButtons(cluster, card);
+        showToast(d.message || 'Copied.');
+    })
+    .catch(e => showToast('Copy: ' + e.message, 'danger'));
+}
+
+// Drop copy buttons whose source no longer has anything left to fill.
+function refreshCopyButtons(cluster, card) {
+    card.querySelectorAll('tr[data-member-id]').forEach(tr => {
+        const btn = tr.querySelector('.dup-copy-fields');
+        if (!btn) return;
+        const src = dupTracks[String(tr.dataset.memberId)] || {};
+        if (!clusterCopyTargets(src, cluster).length) btn.remove();
+    });
 }
 
 // Full-size art lightbox. Shows the original at true 1:1 resolution (scrollable if it

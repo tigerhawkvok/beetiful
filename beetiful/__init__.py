@@ -229,6 +229,9 @@ def get_duplicates():
             'title': by_id[mid]['title'],
             'artist': by_id[mid]['artist'],
             'album': by_id[mid]['album'],
+            'genre': by_id[mid]['genre'],
+            'year': by_id[mid]['year'],
+            'composer': by_id[mid]['composer'],
             'length': by_id[mid]['length'],
             'length_s': by_id[mid]['length_s'],
             'bitrate': by_id[mid]['bitrate_kbps'],
@@ -261,8 +264,88 @@ def rename_track():
                             capture_output=True, text=True)
     if result.returncode != 0:
         return jsonify({'error': result.stderr}), 500
-    _PATH_CACHE.pop(beet_id, None)  # the title change may have moved/renamed the file
+    _PATH_CACHE.pop(beet_id, None)  # re-resolve in case beets moved the file
     return jsonify({'message': 'Track renamed.', 'path': _path_for(beet_id)})
+
+
+COPY_FIELDS = ('album', 'genre', 'year', 'composer')
+
+
+@app.route('/api/library/copy-fields', methods=['POST'])
+def copy_fields():
+    """Copy descriptive fields from one track to siblings, per field, only where the
+    source has a value and the target is empty (no clobbering)."""
+    data = request.json or {}
+    source_id = data.get('source_id')
+    target_ids = data.get('target_ids', [])
+    if source_id in (None, '') or not target_ids:
+        return jsonify({'error': 'Missing source_id or target_ids.'}), 400
+    try:
+        source_id = int(source_id)
+        target_ids = [int(t) for t in target_ids]
+    except (ValueError, TypeError):
+        return jsonify({'error': 'Invalid id.'}), 400
+
+    # Fetch current values for source + targets in one query.
+    all_ids = [source_id] + target_ids
+    fmt = FIELD_SEP.join(['$id'] + [f'${f}' for f in COPY_FIELDS]) + RECORD_SEP
+    id_query = []
+    for i, tid in enumerate(all_ids):
+        if i:
+            id_query.append(',')
+        id_query.append(f'id:{tid}')
+    result = subprocess.run(['beet', 'list', '-f', fmt] + id_query, capture_output=True, text=True)
+    if result.returncode != 0:
+        return jsonify({'error': result.stderr}), 500
+
+    rows = {}
+    for record in result.stdout.split(RECORD_SEP):
+        if not record.strip():
+            continue
+        parts = record.lstrip('\n').split(FIELD_SEP)
+        try:
+            rid = int(parts[0])
+        except (ValueError, IndexError):
+            continue
+        rows[rid] = {f: (parts[i + 1] if i + 1 < len(parts) else '') for i, f in enumerate(COPY_FIELDS)}
+
+    source = rows.get(source_id, {})
+    # Per field: which targets have it empty while the source has a value?
+    plan = {}
+    for f in COPY_FIELDS:
+        sval = (source.get(f) or '').strip()
+        if not sval:
+            continue
+        miss = [tid for tid in target_ids if not (rows.get(tid, {}).get(f) or '').strip()]
+        if miss:
+            plan[f] = (sval, miss)
+
+    if not plan:
+        return jsonify({'message': 'Nothing to copy.', 'updated': {}, 'paths': {}})
+
+    affected = set()
+    for f, (sval, miss) in plan.items():
+        q = []
+        for i, tid in enumerate(miss):
+            if i:
+                q.append(',')
+            q.append(f'id:{tid}')
+        r = subprocess.run(['beet', 'modify', '-y'] + q + [f'{f}={sval}'], capture_output=True, text=True)
+        if r.returncode != 0:
+            return jsonify({'error': r.stderr}), 500
+        affected.update(miss)
+
+    updated = {}
+    for f, (sval, miss) in plan.items():
+        for tid in miss:
+            updated.setdefault(str(tid), {})[f] = sval
+
+    paths = {}
+    for tid in affected:
+        _PATH_CACHE.pop(tid, None)  # re-resolve in case beets moved the file
+        paths[str(tid)] = _path_for(tid)
+
+    return jsonify({'message': f'Copied into {len(affected)} track(s).', 'updated': updated, 'paths': paths})
 
 
 @app.route('/api/duplicates/scan', methods=['POST'])
@@ -466,6 +549,12 @@ def batch_update():
     result = subprocess.run(command, capture_output=True, text=True)
     if result.returncode != 0:
         return jsonify({'error': result.stderr}), 500
+    # Modifying fields can move files (paths embed album/title), so drop stale cache entries.
+    for track_id in ids:
+        try:
+            _PATH_CACHE.pop(int(track_id), None)
+        except (ValueError, TypeError):
+            pass
     return jsonify({'message': f'Updated {len(ids)} track(s).'})
 
 
