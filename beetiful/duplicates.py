@@ -134,10 +134,51 @@ class Detector:
         raise NotImplementedError
 
 
+class DefiniteDetector(Detector):
+    """Identical content: same file hash (sha256) or same AcoustID recording id.
+
+    Items may carry `content_hash` (from the sidecar scan cache) and/or `acoustid_id`
+    (read from beets). Either is sufficient to call a pair a definite duplicate; the two
+    relations are merged so a file-identical pair and an AcoustID-identical pair that
+    share a member land in one cluster.
+    """
+
+    tier = "definite"
+
+    def find(self, items):
+        by_id = {it["id"]: it for it in items}
+        uf = _UnionFind()
+        for key_field in ("content_hash", "acoustid_id"):
+            groups = {}
+            for it in items:
+                val = it.get(key_field)
+                if val:
+                    groups.setdefault(val, []).append(it["id"])
+            for ids in groups.values():
+                for other in ids[1:]:
+                    uf.union(ids[0], other)
+
+        clusters = []
+        for member_ids in uf.groups():
+            hashes = {by_id[m].get("content_hash") for m in member_ids if by_id[m].get("content_hash")}
+            aids = {by_id[m].get("acoustid_id") for m in member_ids if by_id[m].get("acoustid_id")}
+            if len(hashes) == 1 and all(by_id[m].get("content_hash") for m in member_ids):
+                reason = "identical file (sha256)"
+            elif len(aids) == 1 and all(by_id[m].get("acoustid_id") for m in member_ids):
+                reason = "same recording (AcoustID)"
+            else:
+                reason = "identical content (file / recording)"
+            clusters.append(Cluster(self.tier, reason, member_ids))
+        return clusters
+
+
 class ProbableDetector(Detector):
     """Same normalized title+artist, and either near-equal length or same album."""
 
     tier = "probable"
+
+    def __init__(self, suppress_pairs=None):
+        self.suppress_pairs = suppress_pairs or set()
 
     def find(self, items):
         buckets = {}
@@ -156,6 +197,8 @@ class ProbableDetector(Detector):
                 uf.find(group[i]["id"])
                 for j in range(i + 1, len(group)):
                     a, b = group[i], group[j]
+                    if frozenset((a["id"], b["id"])) in self.suppress_pairs:
+                        continue
                     if _probable_match(a, b):
                         uf.union(a["id"], b["id"])
             for member_ids in uf.groups():
@@ -214,7 +257,7 @@ class PossibleDetector(Detector):
         return longer == 0 or abs(la - lb) / longer <= POSSIBLE_LENGTH_TOL_FRAC
 
 
-def find_duplicates(items, tiers=("probable", "possible")):
+def find_duplicates(items, tiers=("definite", "probable", "possible")):
     """Run the requested tiers and return clusters, strongest tier first.
 
     A pair already grouped by a stronger tier is suppressed from weaker ones so the
@@ -223,12 +266,21 @@ def find_duplicates(items, tiers=("probable", "possible")):
     results = []
     claimed_pairs = set()
 
-    if "probable" in tiers:
-        for cl in ProbableDetector().find(items):
+    def claim(cluster):
+        ids = cluster.member_ids
+        for i in range(len(ids)):
+            for j in range(i + 1, len(ids)):
+                claimed_pairs.add(frozenset((ids[i], ids[j])))
+
+    if "definite" in tiers:
+        for cl in DefiniteDetector().find(items):
             results.append(cl)
-            for i in range(len(cl.member_ids)):
-                for j in range(i + 1, len(cl.member_ids)):
-                    claimed_pairs.add(frozenset((cl.member_ids[i], cl.member_ids[j])))
+            claim(cl)
+
+    if "probable" in tiers:
+        for cl in ProbableDetector(suppress_pairs=claimed_pairs).find(items):
+            results.append(cl)
+            claim(cl)
 
     if "possible" in tiers:
         results.extend(PossibleDetector(suppress_pairs=claimed_pairs).find(items))

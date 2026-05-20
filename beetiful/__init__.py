@@ -4,6 +4,7 @@ import mimetypes
 import subprocess
 
 from . import duplicates
+from . import hashscan
 
 
 app = Flask(__name__)
@@ -50,7 +51,10 @@ def duplicates_page():
     return render_template('duplicates.html')
 
 
-DUP_FIELDS = ['id', 'title', 'artist', 'album', 'length', 'bitrate', 'format', 'path']
+DUP_FIELDS = ['id', 'title', 'artist', 'album', 'genre', 'year', 'composer',
+              'length', 'bitrate', 'format', 'path', 'acoustid_id']
+# Descriptive fields used to break ties toward the more fully-tagged copy.
+_RICHNESS_FIELDS = ('album', 'genre', 'year', 'composer')
 DUP_FORMAT = FIELD_SEP.join(f'${f}' for f in DUP_FIELDS) + RECORD_SEP
 
 # Codec quality ordering for "which copy to keep". Lossless first, then by codec
@@ -114,13 +118,19 @@ def _fetch_dup_items():
     return items
 
 
+def _metadata_richness(track):
+    """Count populated descriptive fields — used to prefer the better-tagged copy."""
+    return sum(1 for f in _RICHNESS_FIELDS if str(track.get(f) or '').strip())
+
+
 def _suggest_keep(member_ids, by_id):
-    """Pick the best copy: codec class first, then bitrate (within codec), length, lowest id."""
+    """Pick the best copy: codec class, then bitrate (within codec), length, richer tags, lowest id."""
     def rank(track):
         return (
             _codec_rank(track.get('format')),
             track.get('bitrate_kbps') or 0,
             track.get('length_s') or 0,
+            _metadata_richness(track),
             -track['id'],
         )
     return max(member_ids, key=lambda mid: rank(by_id[mid]))
@@ -128,12 +138,17 @@ def _suggest_keep(member_ids, by_id):
 
 @app.route('/api/duplicates', methods=['GET'])
 def get_duplicates():
-    tiers_arg = request.args.get('tiers', 'probable,possible')
+    tiers_arg = request.args.get('tiers', 'definite,probable,possible')
     tiers = tuple(t.strip() for t in tiers_arg.split(',') if t.strip())
     try:
         items = _fetch_dup_items()
     except RuntimeError as e:
         return jsonify({'error': str(e)}), 500
+
+    # Inject cached file hashes (sidecar) so the definite tier can match identical files.
+    hashes = hashscan.cached_hashes()
+    for it in items:
+        it['content_hash'] = hashes.get(it['id'], '')
 
     by_id = {it['id']: it for it in items}
     clusters = duplicates.find_duplicates(items, tiers=tiers)
@@ -162,6 +177,24 @@ def get_duplicates():
         for mid in referenced
     }
     return jsonify({'clusters': out_clusters, 'tracks': tracks, 'counts': counts})
+
+
+@app.route('/api/duplicates/scan', methods=['POST'])
+def start_hash_scan():
+    """Kick off the async file-content hashing job for the definite tier."""
+    try:
+        items = _fetch_dup_items()
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 500
+    started = hashscan.start_scan({'id': it['id'], 'path': it['path']} for it in items)
+    if not started:
+        return jsonify({'error': 'A scan is already running.'}), 409
+    return jsonify({'message': 'Scan started.', 'total': len(items)})
+
+
+@app.route('/api/duplicates/scan/status', methods=['GET'])
+def hash_scan_status():
+    return jsonify(hashscan.get_status())
 
 
 @app.route('/api/stats', methods=['GET'])

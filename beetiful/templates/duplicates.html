@@ -12,9 +12,13 @@
         <a class="btn btn-outline-light btn-sm" href="/">&larr; Library</a>
         <span class="navbar-brand mb-0 h1 mx-3">Duplicate Finder</span>
         <div class="ms-auto d-flex align-items-center gap-3">
+            <label class="text-light small mb-0"><input type="checkbox" id="tierDefinite" checked> Definite</label>
             <label class="text-light small mb-0"><input type="checkbox" id="tierProbable" checked> Probable</label>
             <label class="text-light small mb-0"><input type="checkbox" id="tierPossible" checked> Possible</label>
-            <button class="btn btn-primary btn-sm" id="scanBtn" onclick="scan()">Scan</button>
+            <button class="btn btn-primary btn-sm" id="scanBtn" onclick="scan()">Find duplicates</button>
+            <span id="hashProgress" class="text-light small"></span>
+            <button class="btn btn-outline-light btn-sm" id="hashBtn" onclick="startHashScan()"
+                title="Compute file content hashes so the Definite tier can match byte-identical files. One-time; may be slow over a network mount.">Check by hash</button>
         </div>
     </nav>
 

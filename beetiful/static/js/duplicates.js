@@ -1,7 +1,10 @@
 let dupTracks = {};
 let dupCounts = {};
 
-document.addEventListener('DOMContentLoaded', scan);
+document.addEventListener('DOMContentLoaded', () => {
+    scan();
+    resumeScanIfRunning();
+});
 
 const TIER_META = {
     definite: { label: 'Definite', badge: 'text-bg-danger' },
@@ -12,9 +15,55 @@ const TIER_ORDER = ['definite', 'probable', 'possible'];
 
 function selectedTiers() {
     const tiers = [];
+    if (document.getElementById('tierDefinite').checked) tiers.push('definite');
     if (document.getElementById('tierProbable').checked) tiers.push('probable');
     if (document.getElementById('tierPossible').checked) tiers.push('possible');
     return tiers;
+}
+
+function setHashButton(running) {
+    const btn = document.getElementById('hashBtn');
+    btn.disabled = running;
+    btn.textContent = running ? 'Computing hashes' : 'Check by hash';
+}
+
+function startHashScan() {
+    setHashButton(true);
+    fetch('/api/duplicates/scan', { method: 'POST' })
+        .then(r => r.json().then(d => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+            if (!ok) throw new Error(d.error || 'could not start scan');
+            pollScan();
+        })
+        .catch(e => { showToast('Hash scan: ' + e.message, 'danger'); setHashButton(false); });
+}
+
+function resumeScanIfRunning() {
+    fetch('/api/duplicates/scan/status').then(r => r.json()).then(s => {
+        if (s.running) { setHashButton(true); pollScan(); }
+    }).catch(() => {});
+}
+
+function pollScan() {
+    const el = document.getElementById('hashProgress');
+    fetch('/api/duplicates/scan/status').then(r => r.json()).then(s => {
+        if (s.running) {
+            setHashButton(true);
+            el.textContent = `Hashing ${s.done}/${s.total} (new ${s.hashed}, cached ${s.skipped}, err ${s.errors})`;
+            setTimeout(pollScan, 1500);
+        } else {
+            setHashButton(false);
+            if (s.error) {
+                el.textContent = `Error: ${s.error}`;
+            } else if (s.total) {
+                el.textContent = `Done: ${s.hashed} new, ${s.skipped} cached, ${s.errors} errors.`;
+                showToast('File hashing complete — refreshing.');
+                scan();
+            } else {
+                el.textContent = '';
+            }
+        }
+    }).catch(() => {});
 }
 
 function scan() {
