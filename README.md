@@ -81,16 +81,16 @@ Examples:
 
 ```bash
 # Localhost only, production server (default)
-python app.py
+uv run app.py
 
 # Localhost + your LAN, production server
-python app.py --allow-local-subnet
+uv run app.py --allow-local-subnet
 
 # Localhost only, Flask dev server with debugger
-python app.py --debug
+uv run app.py --debug
 
 # LAN-accessible dev server on a one-off port
-python app.py --allow-local-subnet --debug --port 8080
+uv run app.py --allow-local-subnet --debug --port 8080
 ```
 
 ## Usage
