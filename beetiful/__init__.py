@@ -3,11 +3,18 @@ import os
 import mimetypes
 import subprocess
 
+from . import duplicates
+
 
 app = Flask(__name__)
 
 beets_config_dir = os.getenv('BEETSDIR', os.path.expanduser('~/.config/beets'))
 config_path = os.path.join(beets_config_dir, 'config.yaml')
+
+# Use ASCII Unit Separator between fields and Record Separator between records so embedded
+# newlines in fields like $comments don't fracture rows when parsing `beet list` output.
+FIELD_SEP = '\x1f'
+RECORD_SEP = '\x1e'
 
 
 @app.route('/api/config', methods=['GET'])
@@ -36,6 +43,125 @@ def edit_config():
 @app.route('/')
 def home():
     return render_template('index.html')
+
+
+@app.route('/duplicates')
+def duplicates_page():
+    return render_template('duplicates.html')
+
+
+DUP_FIELDS = ['id', 'title', 'artist', 'album', 'length', 'bitrate', 'format', 'path']
+DUP_FORMAT = FIELD_SEP.join(f'${f}' for f in DUP_FIELDS) + RECORD_SEP
+
+# Codec quality ordering for "which copy to keep". Lossless first, then by codec
+# efficiency. Bitrate is NOT comparable across codecs (opus@260 beats mp3@320), so it
+# only breaks ties within the same codec class — see _suggest_keep.
+_CODEC_RANK = {
+    'FLAC': 100, 'ALAC': 100, 'WAV': 100, 'AIFF': 100, 'APE': 100, 'WV': 100,
+    'WAVPACK': 100, 'DSF': 100, 'DSD': 100,
+    'OPUS': 80,
+    'AAC': 70, 'M4A': 70, 'MP4': 70,
+    'VORBIS': 68, 'OGG': 68,
+    'MPC': 66, 'MUSEPACK': 66,
+    'WMA': 50,
+    'MP3': 40,
+}
+_CODEC_RANK_DEFAULT = 30
+
+
+def _codec_rank(fmt):
+    return _CODEC_RANK.get((fmt or '').upper(), _CODEC_RANK_DEFAULT)
+
+
+def _parse_length(text):
+    """Beets renders $length as H:MM:SS / M:SS. Return whole seconds, or None."""
+    text = (text or '').strip()
+    if not text:
+        return None
+    try:
+        parts = [int(p) for p in text.split(':')]
+    except ValueError:
+        return None
+    seconds = 0
+    for p in parts:
+        seconds = seconds * 60 + p
+    return seconds
+
+
+def _parse_bitrate(text):
+    """Beets renders $bitrate as e.g. '275kbps'. Return the integer kbps, or None."""
+    digits = ''.join(c for c in (text or '') if c.isdigit())
+    return int(digits) if digits else None
+
+
+def _fetch_dup_items():
+    result = subprocess.run(['beet', 'list', '-f', DUP_FORMAT], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr)
+    items = []
+    for record in result.stdout.split(RECORD_SEP):
+        if not record.strip():
+            continue
+        fields = record.lstrip('\n').split(FIELD_SEP)
+        row: dict = {name: (fields[i] if i < len(fields) else '') for i, name in enumerate(DUP_FIELDS)}
+        try:
+            row['id'] = int(row['id'])
+        except (ValueError, TypeError):
+            continue
+        row['length_s'] = _parse_length(row['length'])
+        row['bitrate_kbps'] = _parse_bitrate(row['bitrate'])
+        items.append(row)
+    return items
+
+
+def _suggest_keep(member_ids, by_id):
+    """Pick the best copy: codec class first, then bitrate (within codec), length, lowest id."""
+    def rank(track):
+        return (
+            _codec_rank(track.get('format')),
+            track.get('bitrate_kbps') or 0,
+            track.get('length_s') or 0,
+            -track['id'],
+        )
+    return max(member_ids, key=lambda mid: rank(by_id[mid]))
+
+
+@app.route('/api/duplicates', methods=['GET'])
+def get_duplicates():
+    tiers_arg = request.args.get('tiers', 'probable,possible')
+    tiers = tuple(t.strip() for t in tiers_arg.split(',') if t.strip())
+    try:
+        items = _fetch_dup_items()
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 500
+
+    by_id = {it['id']: it for it in items}
+    clusters = duplicates.find_duplicates(items, tiers=tiers)
+
+    out_clusters = []
+    counts = {}
+    for cl in clusters:
+        d = cl.as_dict()
+        d['keep'] = _suggest_keep(cl.member_ids, by_id)
+        out_clusters.append(d)
+        counts[cl.tier] = counts.get(cl.tier, 0) + 1
+
+    referenced = {mid for cl in clusters for mid in cl.member_ids}
+    tracks = {
+        str(mid): {
+            'id': by_id[mid]['id'],
+            'title': by_id[mid]['title'],
+            'artist': by_id[mid]['artist'],
+            'album': by_id[mid]['album'],
+            'length': by_id[mid]['length'],
+            'length_s': by_id[mid]['length_s'],
+            'bitrate': by_id[mid]['bitrate_kbps'],
+            'format': by_id[mid]['format'],
+            'path': by_id[mid]['path'],
+        }
+        for mid in referenced
+    }
+    return jsonify({'clusters': out_clusters, 'tracks': tracks, 'counts': counts})
 
 
 @app.route('/api/stats', methods=['GET'])
@@ -68,10 +194,6 @@ def run_command():
         return jsonify({'error': str(e)}), 500
 
 LIBRARY_FIELDS = ['title', 'artist', 'album', 'genre', 'year', 'bpm', 'composer', 'comments', 'id', 'path']
-# Use ASCII Unit Separator between fields and Record Separator between records so embedded
-# newlines in fields like $comments don't fracture rows.
-FIELD_SEP = '\x1f'
-RECORD_SEP = '\x1e'
 LIBRARY_FORMAT = FIELD_SEP.join(f'${f}' for f in LIBRARY_FIELDS) + RECORD_SEP
 
 

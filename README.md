@@ -27,22 +27,14 @@ To install Beetiful, follow these steps:
     cd beetiful
     ```
 
-2. **Create a Virtual Environment**
+2. **Create a UV Environment**
 
-    It's recommended to use a Python virtual environment to keep your dependencies isolated.
-
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    ```
-
-3. **Install Dependencies**
-
-    Install the required Python packages:
+    this project uses UV for package and environment management. Create a new UV environment and activate it:
 
     ```bash
-    pip install .
+    uv sync
     ```
+
 4. ## Environment Variables
 
 Create a `.env` file in the project root to configure Beets-specific settings. Here's an example:
@@ -58,12 +50,13 @@ Create a `.env` file in the project root to configure Beets-specific settings. H
     ```
 
     Beetiful manages its own `FLASK_PORT` entry in `.env` — see "Running the Application" below.
+
 5. **Running the Application**
 
 To start the application, run the following command from the project root:
 
 ```bash
-python app.py
+uv run app.py
 ```
 
 On startup Beetiful prints its listening URL, e.g. `Beetiful listening on http://127.0.0.1:4732/` — open that in your browser.
