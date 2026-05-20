@@ -257,6 +257,18 @@ class PossibleDetector(Detector):
         return longer == 0 or abs(la - lb) / longer <= POSSIBLE_LENGTH_TOL_FRAC
 
 
+def titles_diverge(titles, threshold=POSSIBLE_TITLE_THRESHOLD):
+    """True if the cluster's titles aren't all close — e.g. an AcoustID match whose
+    members are tagged with genuinely different titles (one is likely mistagged)."""
+    norm = [normalize_title_loose(t) for t in titles]
+    norm = [n for n in norm if n]
+    for i in range(len(norm)):
+        for j in range(i + 1, len(norm)):
+            if fuzz.token_sort_ratio(norm[i], norm[j]) < threshold:
+                return True
+    return False
+
+
 def find_duplicates(items, tiers=("definite", "probable", "possible")):
     """Run the requested tiers and return clusters, strongest tier first.
 

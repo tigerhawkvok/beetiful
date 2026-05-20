@@ -218,6 +218,7 @@ def get_duplicates():
     for cl in clusters:
         d = cl.as_dict()
         d['keep'] = _suggest_keep(cl.member_ids, by_id)
+        d['titles_diverge'] = duplicates.titles_diverge([by_id[m]['title'] for m in cl.member_ids])
         out_clusters.append(d)
         counts[cl.tier] = counts.get(cl.tier, 0) + 1
 
@@ -239,6 +240,29 @@ def get_duplicates():
         for mid in referenced
     }
     return jsonify({'clusters': out_clusters, 'tracks': tracks, 'counts': counts})
+
+
+@app.route('/api/library/rename', methods=['POST'])
+def rename_track():
+    """Set a single track's title by id. May move the file (beets reorganizes on modify)."""
+    data = request.json or {}
+    track_id = data.get('id')
+    title = (data.get('title') or '').strip()
+    if track_id in (None, ''):
+        return jsonify({'error': 'Missing track id.'}), 400
+    if not title:
+        return jsonify({'error': 'Title cannot be empty.'}), 400
+    try:
+        beet_id = int(track_id)
+    except (ValueError, TypeError):
+        return jsonify({'error': f'Invalid track id: {track_id!r}'}), 400
+
+    result = subprocess.run(['beet', 'modify', '-y', f'id:{beet_id}', f'title={title}'],
+                            capture_output=True, text=True)
+    if result.returncode != 0:
+        return jsonify({'error': result.stderr}), 500
+    _PATH_CACHE.pop(beet_id, None)  # the title change may have moved/renamed the file
+    return jsonify({'message': 'Track renamed.', 'path': _path_for(beet_id)})
 
 
 @app.route('/api/duplicates/scan', methods=['POST'])

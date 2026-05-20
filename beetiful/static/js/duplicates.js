@@ -165,7 +165,7 @@ function renderCluster(cluster, idx) {
         keepTd.appendChild(radio);
         tr.appendChild(keepTd);
 
-        tr.appendChild(cell(t.title));
+        tr.appendChild(titleCell(t, cluster, card));
         tr.appendChild(cell(t.artist));
         tr.appendChild(albumCell(t));
         tr.appendChild(cell(t.length));
@@ -180,7 +180,7 @@ function renderCluster(cluster, idx) {
         playTd.appendChild(audio);
         if (t.path) {
             const pathEl = document.createElement('div');
-            pathEl.className = 'small text-muted font-monospace mt-1';
+            pathEl.className = 'dup-path small text-muted font-monospace mt-1';
             pathEl.style.wordBreak = 'break-all';
             pathEl.style.maxWidth = '13rem';
             pathEl.textContent = t.path;
@@ -224,6 +224,88 @@ function cell(text) {
     const td = document.createElement('td');
     td.textContent = text || '';
     return td;
+}
+
+// Title cell. When a cluster's titles disagree (e.g. an AcoustID match where one copy is
+// mistagged), each title gets a Rename button to fix it in place.
+function titleCell(t, cluster, card) {
+    const td = document.createElement('td');
+    const span = document.createElement('span');
+    span.textContent = t.title || '';
+    td.appendChild(span);
+    if (cluster.titles_diverge) {
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-outline-secondary btn-sm ms-2 py-0';
+        btn.textContent = 'Rename';
+        btn.title = 'Fix this title in place (marks this copy as the keeper)';
+        btn.addEventListener('click', () => openRenameModal(t, span, card));
+        td.appendChild(btn);
+    }
+    return td;
+}
+
+function openRenameModal(t, titleSpan, card) {
+    document.getElementById('renameModal')?.remove();
+    const modal = document.createElement('div');
+    modal.className = 'modal fade';
+    modal.id = 'renameModal';
+    modal.tabIndex = -1;
+    modal.innerHTML = `
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Rename Track</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <label class="form-label" for="renameInput">Title</label>
+                    <input type="text" class="form-control" id="renameInput">
+                    <div class="form-text">Saving marks this copy as the one to keep.</div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="renameSave">Save</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const input = modal.querySelector('#renameInput');
+    input.value = t.title || '';
+    const bsModal = bootstrap.Modal.getOrCreateInstance(modal);
+    const submit = () => {
+        const newTitle = input.value.trim();
+        if (!newTitle) { showToast('Title cannot be empty.', 'danger'); return; }
+        saveRename(t, newTitle, titleSpan, card, bsModal);
+    };
+    modal.querySelector('#renameSave').addEventListener('click', submit);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+    modal.addEventListener('shown.bs.modal', () => { input.focus(); input.select(); });
+    bsModal.show();
+}
+
+function saveRename(t, newTitle, titleSpan, card, bsModal) {
+    fetch('/api/library/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: t.id, title: newTitle })
+    })
+    .then(r => r.json().then(d => ({ ok: r.ok, d })))
+    .then(({ ok, d }) => {
+        if (!ok) throw new Error(d.error || 'rename failed');
+        t.title = newTitle;
+        titleSpan.textContent = newTitle;
+        if (d.path) {
+            const pathEl = card.querySelector(`tr[data-member-id="${t.id}"] .dup-path`);
+            if (pathEl) { pathEl.textContent = d.path; pathEl.title = d.path; }
+            t.path = d.path;
+        }
+        // Editing a title asserts this copy is the correct one — make it the keeper.
+        const radio = card.querySelector(`tr[data-member-id="${t.id}"] input[type="radio"]`);
+        if (radio) { radio.checked = true; updateRowEmphasis(card); }
+        showToast('Renamed; marked as keeper.');
+        bsModal.hide();
+    })
+    .catch(e => showToast('Rename: ' + e.message, 'danger'));
 }
 
 // Album cell with a fixed-size, lazy-loaded cover thumbnail. The 36px slot is reserved
