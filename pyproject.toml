@@ -34,6 +34,11 @@ dependencies = [
 requires = ["flit_core<4"]
 build-backend = "flit_core.buildapi"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
+
 [project.urls]
 "Homepage" = "http://github.com/tigerhawkvok/beetiful"
 "Bug Reports" = "https://github.com/tigerhawkvok/beetiful/issues"

@@ -17,7 +17,9 @@ import time
 
 from . import artwork
 
-CACHE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'hashcache.sqlite')
+# Overridable so tests (and containers) can use an isolated cache instead of the repo's.
+CACHE_PATH = os.environ.get('BEETIFUL_HASHCACHE') or \
+    os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'hashcache.sqlite')
 
 _state_lock = threading.Lock()
 _state = {

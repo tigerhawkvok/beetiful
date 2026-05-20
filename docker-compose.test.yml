@@ -1,0 +1,10 @@
+# Run the route test suite in an isolated container against a freshly seeded mock
+# beets library. Usage:  docker compose -f docker-compose.test.yml run --rm test
+services:
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    # The mock library is generated at test time inside the container; nothing external
+    # is required. Override the command to drop into a shell for debugging:
+    #   docker compose -f docker-compose.test.yml run --rm test bash

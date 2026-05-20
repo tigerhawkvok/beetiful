@@ -1,0 +1,27 @@
+# Self-contained test image: builds a mock beets library and runs the route suite.
+# Mirrors a real deployment — the app shells out to `beet`, which needs ffmpeg (for the
+# generated fixtures and beets' own decoding) and, optionally, chromaprint.
+FROM python:3.13-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libchromaprint-tools \
+    && rm -rf /var/lib/apt/lists/*
+
+# uv for environment management (matches local workflow).
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+# Resolve deps first for layer caching. beets is the external CLI the app drives; it is
+# not an app runtime dependency, so it's installed into the venv explicitly here.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --dev \
+    && uv pip install beets
+
+COPY . .
+
+# Keep the hash-cache sidecar out of any mounted source tree.
+ENV BEETIFUL_HASHCACHE=/tmp/beetiful-hashcache.sqlite
+
+CMD ["uv", "run", "pytest", "tests/", "-q"]
